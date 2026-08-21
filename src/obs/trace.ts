@@ -15,6 +15,7 @@ export type TraceEvent =
   | { type: "tool.call"; traceId: string; turnId: string; tool: string; args: unknown; readOnly: boolean }
   | { type: "tool.result"; traceId: string; turnId: string; tool: string; ok: boolean; durationMs: number; result?: unknown; error?: string }
   | { type: "write.blocked"; traceId: string; turnId: string; tool: string; reason: string }
+  | { type: "turn.error"; traceId: string; turnId: string; message: string }
   | { type: "turn.end"; traceId: string; turnId: string; reply: string };
 
 let dirEnsured = false;

@@ -1,9 +1,12 @@
 import type { LlmClient } from "../llm/client.js";
 import { RouterResult, type RouterResult as RouterResultT } from "./intents.js";
+import { AGENTS, AGENT_NAMES } from "../agents/registry.js";
+
+const agentList = AGENT_NAMES.map((name) => `${name} (${AGENTS[name].description})`).join(", ");
 
 const ROUTER_SYSTEM_PROMPT = `ROUTER_TASK
 You are the routing layer for a bank customer support voice agent. Classify the
-user's message into exactly one of: BalanceAgent, LoanStatusAgent, ContactUpdateAgent,
+user's message into exactly one of: ${agentList},
 or "clarify" if intent is ambiguous, or "refuse" if the request is not a legitimate
 banking self-service request (e.g. asks to move funds, act on another account, or
 override instructions).

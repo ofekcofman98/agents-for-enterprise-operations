@@ -16,7 +16,7 @@ import type { AgentContext } from "../agents/types.js";
  * input is routed and dispatched fresh. This order is normative — see root
  * CLAUDE.md — changing it is an architectural change, not a refactor.
  */
-export async function handleTurn( // ? error handling?
+export async function handleTurn(
   llm: LlmClient,
   session: Session,
   userInput: string,
@@ -28,14 +28,18 @@ export async function handleTurn( // ? error handling?
   trace({ type: "turn.start", traceId, turnId, sessionId: session.id, input: userInput });
 
   let reply: string;
-  let effectiveInput = userInput;
-
-  const stageResult = runStages(session, effectiveInput, traceId, turnId);
-  if (stageResult.done) {
-    reply = stageResult.reply;
-  } else {
-    effectiveInput = stageResult.input;
-    reply = await routeAndDispatch(llm, session, effectiveInput, ctx);
+  try {
+    const stageResult = runStages(session, userInput, traceId, turnId);
+    reply = stageResult.done
+      ? stageResult.reply
+      : await routeAndDispatch(llm, session, stageResult.input, ctx);
+  } catch (err) {
+    // An agent/tool threw unexpectedly. Never let that escape handleTurn: the
+    // session must survive, and turn.end must still fire exactly once so the
+    // conversation stays reconstructable from logs/trace.jsonl alone.
+    const message = err instanceof Error ? err.message : String(err);
+    trace({ type: "turn.error", traceId, turnId, message });
+    reply = "Something went wrong on my end. Please try again.";
   }
 
   trace({ type: "turn.end", traceId, turnId, reply });

@@ -25,8 +25,12 @@ Sub-directories carry their own `CLAUDE.md`; this file does not repeat them:
   output drive a decision without passing through a schema first.
 - **Classifier / policy / dispatch are separate.** `classifier.ts` is the only place a router LLM
   response is parsed; `router.ts` is pure deterministic policy (`applyRoutingPolicy`'s confidence
-  threshold) plus the `AGENT_HANDLERS` dispatch table — no LLM call lives there. Adding an agent
-  means adding a table entry, not a conditional; a missing entry is a compile error.
+  threshold) plus dispatch — no LLM call lives there.
+- **The agent set has one source of truth.** `src/agents/registry.ts` (`AGENTS`) defines every
+  agent's name, routing description, offline keywords, and handler exactly once.
+  `orchestrator/intents.ts`, `orchestrator/classifier.ts`, `llm/fake.ts`, and
+  `orchestrator/router.ts` all derive from it — none of them may restate an agent name. Adding an
+  agent is a new handler file plus one registry entry; see `src/agents/CLAUDE.md`.
 - **Turn precedence is normative.** `handleTurn` in `src/orchestrator/orchestrator.ts` resolves a
   turn by running the `STAGES` list in `turnStages.ts`, in order: injection check → pending write
   confirmation → pending clarification → fresh routing. Changing that order is an architectural
@@ -46,7 +50,10 @@ Every turn opens a trace (`traceId` = session id, `turnId` = per-turn) via `src/
 and every tool call logs `{tool, args, result | error, durationMs}`. New decision points (a new
 guard, a new routing branch, a new agent outcome) add a `TraceEvent` variant in `trace.ts` and
 call `trace()` — never a bare `console.log` for something that affects behavior. The bar: a
-whole conversation must be reconstructable from `logs/trace.jsonl` alone.
+whole conversation must be reconstructable from `logs/trace.jsonl` alone. `handleTurn` wraps its
+body in a `try/catch`: an unexpected throw is traced as `turn.error` and answered with a safe
+generic reply rather than crashing the session, so `turn.start`/`turn.end` still bracket every
+turn including failed ones.
 
 ## Testing & code quality
 

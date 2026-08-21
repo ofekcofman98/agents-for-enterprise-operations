@@ -1,4 +1,5 @@
 import type { LlmClient } from "./client.js";
+import { AGENTS, AGENT_NAMES } from "../agents/registry.js";
 
 /**
  * Deterministic, offline stand-in for the real model. Used by default when
@@ -6,7 +7,9 @@ import type { LlmClient } from "./client.js";
  * network access or model non-determinism. Recognizes the two prompt shapes
  * the app actually sends (router classification, contact-update extraction)
  * via simple keyword rules and returns the same JSON contract the real
- * client is instructed to produce.
+ * client is instructed to produce. Routing keywords come from
+ * src/agents/registry.ts — never hardcoded here — so a new agent is
+ * classifiable offline without touching this file.
  */
 export class FakeLlmClient implements LlmClient {
   async complete(systemPrompt: string, userPrompt: string): Promise<string> {
@@ -25,32 +28,26 @@ export class FakeLlmClient implements LlmClient {
 }
 
 function routeByKeyword(text: string) {
-  const hasBalance = /balance|how much (money|do i have)|יתרה/.test(text);
-  const hasLoan = /loan|הלוואה/.test(text);
-  const hasContact = /phone|address|update.*(contact|details)|טלפון|כתובת|עדכ(ן|ון)/.test(text);
+  const hits = AGENT_NAMES.filter((name) => AGENTS[name].keywords.test(text));
 
-  const hits = [hasBalance, hasLoan, hasContact].filter(Boolean).length;
-
-  if (hits === 0) {
+  if (hits.length === 0) {
+    const options = AGENT_NAMES.map((name) => AGENTS[name].description).join(" ");
     return {
       decision: "clarify",
       confidence: 0.2,
       reason: "no recognizable intent keywords",
-      clarifyingQuestion:
-        "I can help with account balance, loan status, or updating your contact details — which one do you need?",
+      clarifyingQuestion: `I can help with: ${options} — which one do you need?`,
     };
   }
-  if (hits > 1) {
+  if (hits.length > 1) {
     return {
       decision: "clarify",
       confidence: 0.4,
       reason: "multiple possible intents detected",
-      clarifyingQuestion: "Just to confirm — is this about your balance, your loan, or your contact details?",
+      clarifyingQuestion: `Just to confirm — which of these did you mean: ${hits.join(", ")}?`,
     };
   }
-  if (hasBalance) return { decision: "BalanceAgent", confidence: 0.9, reason: "balance keyword matched" };
-  if (hasLoan) return { decision: "LoanStatusAgent", confidence: 0.9, reason: "loan keyword matched" };
-  return { decision: "ContactUpdateAgent", confidence: 0.9, reason: "contact update keyword matched" };
+  return { decision: hits[0], confidence: 0.9, reason: `${hits[0]} keyword matched` };
 }
 
 function extractContactUpdate(text: string) {

@@ -31,14 +31,28 @@ final user-facing reply itself. `applyAgentResult` in `orchestrator.ts` is the o
 
 ## Adding a new agent
 
-1. Add the name to the `AgentName` enum in `src/orchestrator/intents.ts`.
-2. Extend the router system prompt in `src/orchestrator/classifier.ts` and the keyword rules in
-   `src/llm/fake.ts` (`routeByKeyword`) so the new intent is classifiable offline, without an
-   API key.
-3. Add the entry to `AGENT_HANDLERS` in `src/orchestrator/router.ts`. This is a `Record<AgentName,
-   …>`, so a missing entry is a compile error, not a silent fall-through — you cannot forget this
-   step.
-4. Implement the handler in a new file here, returning `AgentResult`. Read-only agents call
+The agent set is defined exactly once, in `src/agents/registry.ts` (`AGENTS`). Everything else —
+the `AgentName` zod enum (`orchestrator/intents.ts`), the classifier prompt
+(`orchestrator/classifier.ts`), the offline keyword router (`llm/fake.ts`), and dispatch
+(`orchestrator/router.ts`) — derives from it. Never restate an agent's name, description, or
+keywords in one of those files; if you're editing any of them to add an agent, stop, you're in
+the wrong place.
+
+1. Implement the handler in a new file here, returning `AgentResult`. Read-only agents call
    `invokeTool` directly like `balanceAgent.ts` / `loanStatusAgent.ts`; a write-capable agent
    follows the `contactUpdateAgent.ts` propose-only pattern.
-5. Add a routing test in `tests/routing.test.ts` covering the new intent.
+2. Add one entry to `AGENTS` in `registry.ts`: `description` (what the classifier prompt tells
+   the model), `keywords` (what `FakeLlmClient` matches offline, in `tests/` and when no API key
+   is set), and `run`. `AGENTS` is `satisfies Record<string, AgentDefinition>`, so a malformed
+   entry is a compile error.
+3. Add a routing test in `tests/routing.test.ts` covering the new intent.
+
+That's it — two files, one of them new.
+
+**Why `AGENTS` is a plain `const` object and not `registerTool`-style side-effecting
+registration** (compare `src/tools/registry.ts`): tools are already populated via import-time
+`registerTool` calls that `cli.ts`/tests must remember to import. For agents that import-order
+hazard buys nothing, since the full set is small and known at compile time — a static object
+gives exhaustiveness checking (`Record<AgentName, …>` via `AgentName = keyof typeof AGENTS`) with
+no risk of a forgotten side-effecting import silently dropping an agent. Don't "unify" the two
+patterns; they're solving different problems.

@@ -1,34 +1,10 @@
 import type { LlmClient } from "../llm/client.js";
-import type { Session } from "../session.js";
 import type { AgentName, RouterResult as RouterResultT } from "./intents.js";
 import { ROUTING_CONFIDENCE_THRESHOLD } from "./intents.js";
 import { classify } from "./classifier.js";
-import { runBalanceAgent } from "../agents/balanceAgent.js";
-import { runLoanStatusAgent } from "../agents/loanStatusAgent.js";
-import { runContactUpdateAgent } from "../agents/contactUpdateAgent.js";
-import type { AgentResult, AgentContext } from "../agents/types.js";
+import { AGENTS } from "../agents/registry.js";
+import type { AgentResult, DispatchDeps } from "../agents/types.js";
 import { trace } from "../obs/trace.js";
-
-/** Everything an agent handler might need, in one uniform shape. */
-export interface DispatchDeps {
-  llm: LlmClient;
-  session: Session;
-  input: string;
-  ctx: AgentContext;
-}
-
-type AgentHandler = (deps: DispatchDeps) => Promise<AgentResult>;
-
-/**
- * One entry per AgentName is enforced by the Record type — omitting an agent
- * here is a compile error, not a silent fall-through. This is the actual
- * routing table; classify()/applyRoutingPolicy() only decide which key to use.
- */
-export const AGENT_HANDLERS: Record<AgentName, AgentHandler> = {
-  BalanceAgent: async ({ session, ctx }) => runBalanceAgent(session, ctx),
-  LoanStatusAgent: async ({ session, ctx }) => runLoanStatusAgent(session, ctx),
-  ContactUpdateAgent: async ({ llm, input, ctx }) => runContactUpdateAgent(llm, input, ctx),
-}; // ? is it modular? Is it easy to add a new agent in minimal changes and places?
 
 /**
  * Deterministic policy over the classifier's raw opinion: the LLM's decision
@@ -70,10 +46,7 @@ export async function route(
   return decision;
 }
 
-/** Runs the handler for a routed agent name. */
-export function dispatch(
-  name: AgentName, 
-  deps: DispatchDeps
-): Promise<AgentResult> {
-  return AGENT_HANDLERS[name](deps);
+/** Runs the registered handler for a routed agent name — see src/agents/registry.ts. */
+export function dispatch(name: AgentName, deps: DispatchDeps): Promise<AgentResult> {
+  return AGENTS[name].run(deps);
 }
